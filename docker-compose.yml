@@ -1,0 +1,107 @@
+version: '3'
+
+######### Services ###################################
+
+services:
+  # Server container
+  nginx:
+    build:
+      context: docker/dev/nginx
+      dockerfile: Dockerfile
+    ports:
+      # Nuxt port
+      - 8080:80
+      # Laravel port
+      - 8081:81
+    volumes:
+      - ./:/var/www
+      - ./docker/dev/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docker/dev/nginx/logs:/var/log/nginx
+    depends_on:
+      - client
+      - php
+
+  # PHP FastCGI Process Manager container
+  php:
+    build:
+      context: docker/dev/php
+      dockerfile: Dockerfile
+    volumes:
+      - ./api:/var/www/api
+    environment:
+      # If you down want to use xDebug, set remote_enable=0
+      XDEBUG_CONFIG: "remote_enable=0"
+      PHP_IDE_CONFIG: "serverName=Docker"
+    depends_on:
+      - mysql
+      - redis
+      - mailhog
+  
+
+  # Supervisor container (schedule and queue runner)
+  supervisor:
+    build:
+      context: docker/dev/supervisor
+      dockerfile: Dockerfile
+    volumes:
+      - ./:/var/www/
+      - ./docker/dev/supervisor/conf.d:/etc/supervisor/conf.d
+      - ./docker/dev/supervisor/logs:/var/log
+    depends_on:
+      - redis
+      - mailhog
+
+  mysql:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+    environment:
+      MYSQL_USER: management_company
+      MYSQL_PASSWORD: root
+      MYSQL_DATABASE: management_company
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - database:/var/lib/mysql
+    ports:
+      - "33060:3306"
+    networks:
+      - mynet
+
+  # Redis container
+  redis:
+    build:
+      context: docker/dev/redis
+      dockerfile: Dockerfile
+    volumes:
+      - redis:/data
+    ports:
+      - 63791:6379
+
+  # Mailhog container (SMTP testing)
+  mailhog:
+    build:
+      context: docker/dev/mailhog
+      dockerfile: Dockerfile
+    ports:
+      - 8026:8025
+
+  # Client container
+  client:
+    build:
+      context: docker/dev/client
+      dockerfile: Dockerfile
+    volumes:
+      - ./client:/var/www/client
+
+######### Volumes ###################################
+
+volumes:
+  database:
+    driver: local
+  redis:
+    driver: local
+
+#Docker Networks
+networks:
+  mynet:
+    driver: bridge
